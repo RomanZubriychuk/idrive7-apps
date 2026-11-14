@@ -23,90 +23,128 @@ const { ReadOnlyDiag } = require('./kit/readonly-diag');
 const { DidReader } = require('./kit/dids');
 const { hex } = require('./kit/diag');
 const { DIDS, ALL, FAST, DDE_INDEXES, Monitor, demoSample } = require('./dpf');
+const { Recorder } = require('./drives');
 
 const W = 1600, H = 520;
 const DDE = 0x12;                      // the engine unit's diagnostic address
 const GO = '#2fd27a';
-const SHOWN_MS = 6000, REGEN_MS = 3000, HIDDEN_MS = 30000, FULL_MS = 30000;
+const SHOWN_MS = 6000, RECORD_MS = 5000, REGEN_MS = 3000, HIDDEN_MS = 30000, FULL_MS = 30000;
 const ENGINE_RPM = 400;                // above = the engine runs
 const OFF_MS = 60000;                  // off this long during a regeneration = it was cut short (not a start-stop)
 const NOTE_MS = 90000;                 // how long "finished" stays up
 const PAGES = ['Filter', 'History'];
 
+/**
+ * The part that runs all the time: app.json "autostart" has the platform start the app with the car, without its
+ * screens, so regenerations are watched and drives recorded without opening it. bg = { log, settings, signals,
+ * spec, dataDir } (start() passes its ctx when the platform didn't call this first). Returns the shared state the
+ * screens and the widget draw from.
+ */
+async function background(bg) {
+    const { settings, log } = bg;
+    const car = new Car(bg, ['rpm', 'speed']);
+    const real = new Monitor({ file: path.join(bg.dataDir, 'regens.json'), log, regenTemp: settings.get('regenTemp') });
+    const demo = new Monitor({ regenTemp: 500 });
+    const rec = new Recorder({ dir: path.join(bg.dataDir, 'drives'), log });
+    settings.onChange(() => { real.regenTemp = settings.get('regenTemp'); });
+
+    const core = {
+        car, real, demo, rec,
+        error: '', index: '', note: null,          // note: { text, color, until }
+        shown: () => false,                         // start() puts in "the page or the widget shows"
+        // demo data: the setting, or (Auto) while no car answers - the emulator, a bench
+        useDemo: () => settings.get('demo') === 'on' || (settings.get('demo') === 'auto' && car.data().demo),
+        mon: () => (core.useDemo() ? demo : real),
+        readNow: () => { lastRead = 0; },
+    };
+
+    /* ---------- reading the engine unit ---------- */
+    let link = null, reader = null, kind = null, reading = false, lastRead = 0, lastFull = 0;
+    let offSince = 0, wasOn = false;
+
+    /** The engine unit's SGBD index (22 F1 50): 'diesel' for a B47 / B57 DDE, 'other', or null without a reply. */
+    async function engineKind() {
+        const u = await link.read(DDE, 0xF150).catch(() => null);
+        if (!u || u[0] !== 0x62 || u.length < 6) return null;
+        core.index = [u[3], u[4], u[5]].map((x) => hex(x)).join('').toUpperCase();
+        log.info('engine unit: SGBD index ' + core.index);
+        return DDE_INDEXES.indexOf(core.index) >= 0 ? 'diesel' : 'other';
+    }
+
+    /** Monitor events -> the note on the screen; returns the events joined, for the drive log. */
+    function happened(events) {
+        events.forEach((e) => {
+            log.info('regeneration: ' + e);
+            if (e === 'done') core.note = { text: 'REGENERATION FINISHED', color: GO, until: Date.now() + NOTE_MS };
+            else if (e === 'start') core.note = null;
+        });
+        return events.join(' ');
+    }
+
+    async function read() {
+        if (reading) return;
+        reading = true;
+        try {
+            if (!link) {
+                link = new ReadOnlyDiag(bg.signals, log);
+                await link.init();
+                reader = new DidReader(link, { ecu: DDE });
+            }
+            if (!kind) kind = await engineKind();
+            const full = !real.running || Date.now() - lastFull >= FULL_MS;
+            const keys = full ? ALL : FAST, s = { t: Date.now() };
+            for (const k of keys) s[k] = await reader.value(k, DIDS[k]);
+            if (full) lastFull = Date.now();
+            if (keys.some((k) => s[k] !== null)) {
+                core.error = '';
+                const event = happened(real.update(s));
+                if (settings.get('record')) {
+                    const d = car.data();
+                    rec.sample(Object.assign({}, s, { rpm: d.rpm, speed: d.speed, regen: !!real.running, event }));
+                }
+            } else {
+                core.error = link.error ? String(link.error) : kind === 'other' ? 'engine unit ' + core.index + ' is not a B47 / B57 diesel' : 'the engine unit has none of these values';
+            }
+        } catch (e) {
+            core.error = String((e && e.message) || e);
+            log.warn('read: ' + core.error);
+        }
+        lastRead = Date.now(); reading = false;
+    }
+
+    setInterval(() => {
+        const now = Date.now();
+        if (core.note && now > core.note.until) core.note = null;
+        if (core.useDemo()) { happened(demo.update(demoSample(now))); return; }
+        const d = car.data(), on = G.isNum(d.rpm) && d.rpm > ENGINE_RPM;
+        if (!on) {
+            // nothing is read with the engine off, so the car can sleep
+            if (wasOn && !offSince) { offSince = now; rec.flush(now); }
+            if (offSince && now - offSince > OFF_MS) {
+                const event = happened(real.engineOff(offSince));
+                if (event && settings.get('record')) rec.sample({ t: now, rpm: d.rpm, speed: d.speed, event: event + ' (engine off)' });
+                offSince = 0; wasOn = false;
+            }
+            return;
+        }
+        if (!wasOn && link) link.wake(DDE);          // a new start: ask again a unit that had stopped answering
+        wasOn = true; offSince = 0;
+        const recording = settings.get('record'), shown = core.shown();
+        if (!shown && !recording && !settings.get('watch') && !real.running) return;
+        const every = real.running ? REGEN_MS : recording ? RECORD_MS : shown ? SHOWN_MS : HIDDEN_MS;
+        if (now - lastRead >= every) read();
+    }, 1000);
+
+    return core;
+}
+
 mgu.run({
+    background,
     async start(ctx) {
         const { ui, settings, log } = ctx;
-        const car = new Car(ctx, ['rpm', 'speed']);
-        const real = new Monitor({ file: path.join(ctx.dataDir, 'regens.json'), log, regenTemp: settings.get('regenTemp') });
-        const demo = new Monitor({ regenTemp: 500 });
-        settings.onChange(() => { real.regenTemp = settings.get('regenTemp'); });
-
-        // demo data: the setting, or (Auto) while no car answers - the emulator, a bench
-        const useDemo = () => settings.get('demo') === 'on' || (settings.get('demo') === 'auto' && car.data().demo);
-        const mon = () => (useDemo() ? demo : real);
-
-        /* ---------- reading the engine unit ---------- */
-        let link = null, reader = null, kind = null, index = '', reading = false, lastRead = 0, lastFull = 0, error = '';
-        let offSince = 0, wasOn = false, note = null;         // note: { text, color, until }
-
-        /** The engine unit's SGBD index (22 F1 50): 'diesel' for a B47 / B57 DDE, 'other', or null without a reply. */
-        async function engineKind() {
-            const u = await link.read(DDE, 0xF150).catch(() => null);
-            if (!u || u[0] !== 0x62 || u.length < 6) return null;
-            index = [u[3], u[4], u[5]].map((x) => hex(x)).join('').toUpperCase();
-            log.info('engine unit: SGBD index ' + index);
-            return DDE_INDEXES.indexOf(index) >= 0 ? 'diesel' : 'other';
-        }
-
-        function happened(events) {
-            events.forEach((e) => {
-                log.info('regeneration: ' + e);
-                if (e === 'done') note = { text: 'REGENERATION FINISHED', color: GO, until: Date.now() + NOTE_MS };
-                else if (e === 'start') note = null;
-            });
-        }
-
-        async function read() {
-            if (reading) return;
-            reading = true;
-            try {
-                if (!link) {
-                    link = new ReadOnlyDiag(ctx.signals, log);
-                    await link.init();
-                    reader = new DidReader(link, { ecu: DDE });
-                }
-                if (!kind) kind = await engineKind();
-                const full = !real.running || Date.now() - lastFull >= FULL_MS;
-                const keys = full ? ALL : FAST, s = { t: Date.now() };
-                for (const k of keys) s[k] = await reader.value(k, DIDS[k]);
-                if (full) lastFull = Date.now();
-                if (keys.some((k) => s[k] !== null)) { error = ''; happened(real.update(s)); }
-                else error = link.error ? String(link.error) : kind === 'other' ? 'engine unit ' + index + ' is not a B47 / B57 diesel' : 'the engine unit has none of these values';
-            } catch (e) {
-                error = String((e && e.message) || e);
-                log.warn('read: ' + error);
-            }
-            lastRead = Date.now(); reading = false;
-        }
-
-        const shown = () => ui.isVisible('MAIN') || !!(ctx.widget && ctx.widget.active());
-        setInterval(() => {
-            const now = Date.now();
-            if (note && now > note.until) note = null;
-            if (useDemo()) { happened(demo.update(demoSample(now))); return; }
-            const d = car.data(), on = G.isNum(d.rpm) && d.rpm > ENGINE_RPM;
-            if (!on) {
-                // nothing is read with the engine off, so the car can sleep
-                if (wasOn && !offSince) offSince = now;
-                if (offSince && now - offSince > OFF_MS) { happened(real.engineOff(offSince)); offSince = 0; wasOn = false; }
-                return;
-            }
-            if (!wasOn && link) link.wake(DDE);          // a new start: ask again a unit that had stopped answering
-            wasOn = true; offSince = 0;
-            if (!shown() && !settings.get('watch') && !real.running) return;
-            const every = real.running ? REGEN_MS : shown() ? SHOWN_MS : HIDDEN_MS;
-            if (now - lastRead >= every) read();
-        }, 1000);
+        const core = ctx.background || await background(ctx);
+        const { car, rec, useDemo, mon } = core;
+        core.shown = () => ui.isVisible('MAIN') || !!(ctx.widget && ctx.widget.active());
 
         /* ---------- what to say ---------- */
         /** The one line that matters: { text, sub, color, alarm }. */
@@ -116,9 +154,9 @@ mgu.run({
                 const min = Math.max(0, Math.round((Date.now() - run.at) / 60000));
                 return { text: 'REGENERATION RUNNING', sub: 'Keep driving, don\'t switch off' + (useDemo() ? '' : ' - ' + min + ' min so far'), color: t.warn, alarm: true };
             }
-            if (note) return { text: note.text, sub: 'Soot now ' + G.fmt(v.soot, 1) + ' g', color: note.color };
+            if (core.note) return { text: core.note.text, sub: 'Soot now ' + G.fmt(v.soot, 1) + ' g', color: core.note.color };
             if (m.interrupted) return { text: 'LAST REGENERATION WAS CUT SHORT', sub: 'A longer drive lets the next one finish', color: t.warn };
-            if (!useDemo() && error) return { text: 'NO DATA', sub: error, color: t.dim };
+            if (!useDemo() && core.error) return { text: 'NO DATA', sub: core.error, color: t.dim };
             if (!G.isNum(v.soot)) {
                 const off = !useDemo() && !(car.data().rpm > ENGINE_RPM);
                 return { text: off ? 'ENGINE OFF' : 'READING...', sub: off ? 'Read while the engine runs' : 'Asking the engine unit', color: t.dim };
@@ -201,7 +239,8 @@ mgu.run({
             [['LOGGED', String(s.seen)], ['FINISHED', String(s.done)], ['CUT SHORT', String(s.interrupted), s.interrupted ? t.warn : null],
                 ['USUALLY TAKES', G.isNum(s.avgMin) ? Math.round(s.avgMin) + ' min' : '--'],
                 ['DISTANCE BETWEEN', G.isNum(s.avgKm) ? km(s.avgKm) : '--'],
-                ['ENGINE UNIT', useDemo() ? 'DEMO' : index || '--']]
+                ['ENGINE UNIT', useDemo() ? 'DEMO' : core.index || '--'],
+                ['DRIVES RECORDED', settings.get('record') ? String(rec.count()) : 'OFF']]
                 .forEach((r, i) => row(cv, t, 1128, 424, 140 + i * 56, r[0], r[1], r[2]));
         }
 
@@ -218,7 +257,7 @@ mgu.run({
         ui.onClick('BTN_PAGE', flip);
         ctx.onTab((i) => { if (i >= 0 && i < PAGES.length) page = i; });
         ctx.hideButton('BTN_PAGE');                     // where the kit runs the screen, the tabs do it
-        ui.onVisible((name, on) => { if (name === 'MAIN' && on && !useDemo()) lastRead = 0; });   // opened: read now
+        ui.onVisible((name, on) => { if (name === 'MAIN' && on && !useDemo()) core.readNow(); });   // opened: read now
         ctx.loop('MAIN', 4, render);
 
         /* ---------- home-screen widget ---------- */
@@ -282,7 +321,7 @@ mgu.run({
             ctx.widget.loop(() => (mon().running ? 3 : 1), renderWidget);
             ctx.widget.onChange((why) => {
                 if (why === 'resized' || why === 'placed') Object.keys(wtext).forEach((k) => delete wtext[k]);
-                if (ctx.widget.active() && !useDemo()) lastRead = 0;
+                if (ctx.widget.active() && !useDemo()) core.readNow();
             });
         }
 

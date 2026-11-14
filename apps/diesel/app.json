@@ -1,12 +1,13 @@
 {
   "id": "diesel",
   "title": "Diesel",
-  "description": "For B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Read-only",
-  "version": "0.1.0",
+  "description": "For B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Starts with the car and records every drive for calibration. Read-only",
+  "version": "0.2.0",
   "vendor": "custom",
   "loggingId": "OAD1",
   "iconGlyph": "DPF",
   "mguHmi": ["ID7"],
+  "autostart": true,
   "requires": { "idrive7-renderd": "2.1.15" },
   "signals": {
     "de.bmw.infotainment.vehicle.CDS": {
@@ -67,6 +68,12 @@
     {
       "key": "watch",
       "label": "Keep watching with the screen closed",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "record",
+      "label": "Record drives (CSV, for calibration)",
       "type": "bool",
       "default": true
     },
