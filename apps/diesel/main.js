@@ -279,7 +279,9 @@ mgu.run({
                 : m.interrupted ? 'Last one was cut short'
                 : f && since !== null ? scale : '';
             const cells = {
-                Title: [on ? 'DPF' : '', 'Text'],
+                // both sizes: the layout's own title, drawn by the HMI like BMW's widgets' (the dimmed top of the
+                // picture is meant for it), so the picture needn't carry one
+                Title: ['DPF', 'Text'],
                 TextRecordings: [on ? line1 : '', 'Text'],
                 TextCam: [on ? line2 : '', 'Text'],
                 ProgressbarVisible: [on, 'Bool'],
@@ -317,9 +319,10 @@ mgu.run({
             const x0 = bx0, x1 = bx1, iw = x1 - x0;
             const top = by0 + Math.round((by1 - by0 - WIDGET_BOX[1] * sc) / 2), Y = (u) => top + u * sc, F = (u) => u * sc;
             if (st.alarm) cv.roundRect(x0 - 8, top - 6, iw + 16, F(WIDGET_BOX[1]) + 12, 10, withAlpha(st.color, 0.28));
-            // top: what is going on (the full text colour: the theme's dim grey is lost on the home screen)
-            const head = st.alarm ? 'REGENERATION' : m.interrupted ? 'CUT SHORT' : 'DPF';
-            cv.text(head, x0, Y(18), F(18), st.alarm || m.interrupted ? t.warn : t.text, { font: 'bold', spacing: F(1.5) });
+            // top: what is going on
+            // (the title DPF is the layout's own, above the picture: here only a state worth a word)
+            const head = st.alarm ? 'REGENERATION' : m.interrupted ? 'CUT SHORT' : '';
+            if (head) cv.text(head, x0, Y(18), F(18), t.warn, { font: 'bold', spacing: F(1.5) });
             if (useDemo()) cv.text('DEMO', x1, Y(18), F(13), t.warn, { font: 'bold', spacing: F(1), align: 'right' });
             // soot, big
             const ky = Y(88);
