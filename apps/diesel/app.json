@@ -2,7 +2,7 @@
   "id": "diesel",
   "title": "DPF",
   "description": "DPF monitor for B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Starts with the car and records every drive for calibration. Read-only",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "vendor": "custom",
   "loggingId": "OAD1",
   "iconGlyph": "DPF",
@@ -29,7 +29,7 @@
     "image": "BackgroundImage1",
     "scale": 2,
     "size": [384, 256],
-    "safe": [0.09, 0.22],
+    "safe": [0.09, 0.17],
     "cells": {
       "ErrorInfo": [false, "Bool"],
       "background": [true, "Bool"],
@@ -76,6 +76,13 @@
       "label": "Record drives (CSV, for calibration)",
       "type": "bool",
       "default": true
+    },
+    {
+      "key": "widgetFit",
+      "label": "Home-screen widget: picture",
+      "type": "choice",
+      "default": "medium",
+      "options": [["small", "Small, clear of the edges"], ["medium", "Medium"], ["large", "Fill the widget"]]
     },
     {
       "key": "theme",

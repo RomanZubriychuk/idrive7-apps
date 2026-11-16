@@ -292,39 +292,53 @@ mgu.run({
                 ctx.widget.set(inst.spawnId, k, cells[k][0], cells[k][1]);
             });
         }
+        /* Big widget picture. The HMI crops a share of every edge (startWidget.safe) and fades the picture towards
+         * its edges, the top and the left most (seen on the car: a dim title, the left column dimmer than the right).
+         * The setting widgetFit keeps everything that much further in, as eDrive does (WIDGET_FIT: share of the
+         * picture on each side, [left, top, right, bottom]), and the layout (WIDGET_BOX, in its own units) scales
+         * down to the room left. */
+        const WIDGET_FIT = { large: [0, 0, 0, 0], medium: [0.05, 0.06, 0.03, 0.02], small: [0.10, 0.11, 0.07, 0.04] };
+        const WIDGET_BOX = [314, 168];
         function renderWidget(inst) {
-            const t = ctx.theme(), m = mon(), v = m.last, st = status(m, t);
+            const t = ctx.theme(), m = mon(), v = m.last, st = status(m, t), f = m.forecast();
             if (inst) widgetCells(inst, m);
             const sw = ctx.spec.startWidget || {};
-            const [w, h] = sw.size || [384, 256], [sx, sy] = sw.safe || [0.09, 0.17], scale = sw.scale || 1;
+            const [w, h] = sw.size || [384, 256], safe = sw.safe || [0.09, 0.17], scale = sw.scale || 1;
             const key = w + 'x' + h;
             const cv = (wcan[key] = wcan[key] || new ScaledCanvas(w, h, scale)).clear([0, 0, 0, 0]);
-            const x0 = Math.round(w * sx), x1 = w - x0, y0 = Math.round(h * sy), y1 = h - y0, iw = x1 - x0;
-            if (st.alarm) cv.roundRect(x0 - 8, y0 - 4, iw + 16, y1 - y0 + 8, 10, withAlpha(st.color, 0.28));
-            // top: what is going on
+            const sf = safe.length === 4 ? safe : [safe[0], safe[1], safe[0], safe[1]];
+            const fit = WIDGET_FIT[settings.get('widgetFit')] || WIDGET_FIT.medium;
+            const bx0 = Math.round(w * (sf[0] + fit[0])), by0 = Math.round(h * (sf[1] + fit[1]));
+            const bx1 = w - Math.round(w * (sf[2] + fit[2])), by1 = h - Math.round(h * (sf[3] + fit[3]));
+            const sc = Math.min(1, (bx1 - bx0) / WIDGET_BOX[0], (by1 - by0) / WIDGET_BOX[1]);
+            const x0 = bx0, x1 = bx1, iw = x1 - x0;
+            const top = by0 + Math.round((by1 - by0 - WIDGET_BOX[1] * sc) / 2), Y = (u) => top + u * sc, F = (u) => u * sc;
+            if (st.alarm) cv.roundRect(x0 - 8, top - 6, iw + 16, F(WIDGET_BOX[1]) + 12, 10, withAlpha(st.color, 0.28));
+            // top: what is going on (the full text colour: the theme's dim grey is lost on the home screen)
             const head = st.alarm ? 'REGENERATION' : m.interrupted ? 'CUT SHORT' : 'DPF';
-            // over the home screen's lighter background the theme's dim grey is hard to read: the full text colour
-            cv.text(head, x0, y0 + 18, 18, st.alarm || m.interrupted ? t.warn : t.text, { font: 'bold', spacing: 1.5 });
-            if (useDemo()) cv.text('DEMO', x1, y0 + 18, 13, t.warn, { font: 'bold', spacing: 1, align: 'right' });
+            cv.text(head, x0, Y(18), F(18), st.alarm || m.interrupted ? t.warn : t.text, { font: 'bold', spacing: F(1.5) });
+            if (useDemo()) cv.text('DEMO', x1, Y(18), F(13), t.warn, { font: 'bold', spacing: F(1), align: 'right' });
             // soot, big
-            const ky = y0 + 76;
-            const vw = cv.text(G.fmt(v.soot, 1), x0, ky, 64, G.isNum(v.soot) ? sootColor(t, v.soot) : t.dim, { font: 'num' });
-            cv.text('g', x0 + vw + 6, ky, 22, t.dim, { font: 'bold' });
-            if (st.alarm) cv.text(G.fmt(v.temp, 0) + ' °C', x1, ky, 26, t.warn, { font: 'bold', align: 'right' });
-            // bar: soot against the gauge's end
-            const max = settings.get('sootMax'), part = G.isNum(v.soot) ? G.clamp(v.soot / max, 0, 1) : 0;
-            cv.roundRect(x0, ky + 14, iw, 10, 5, withAlpha(t.track, 0.9));
-            if (part > 0.02) cv.roundRect(x0, ky + 14, iw * part, 10, 5, st.alarm ? t.warn : part >= 0.8 ? t.warn : GO);
+            const ky = Y(88);
+            const vw = cv.text(G.fmt(v.soot, 1), x0, ky, F(64), G.isNum(v.soot) ? sootColor(t, v.soot) : t.dim, { font: 'num' });
+            cv.text('g', x0 + vw + F(6), ky, F(22), t.text, { font: 'bold' });
+            if (st.alarm) cv.text(G.fmt(v.temp, 0) + ' °C', x1, ky, F(26), t.warn, { font: 'bold', align: 'right' });
+            // bar: as on the small card, the way from the last regeneration to the next (the engine unit's average);
+            // without that, soot against the gauge's end
+            const since = G.isNum(v.sinceKm) ? v.sinceKm : null;
+            const part = m.running ? 1 : f && since !== null && since + f.km > 0 ? G.clamp(since / (since + f.km), 0, 1)
+                : G.isNum(v.soot) ? G.clamp(v.soot / settings.get('sootMax'), 0, 1) : 0;
+            cv.roundRect(x0, ky + F(14), iw, F(10), F(5), withAlpha(t.track, 0.9));
+            if (part > 0.02) cv.roundRect(x0, ky + F(14), iw * part, F(10), F(5), st.alarm || part >= 0.9 ? t.warn : GO);
             // bottom: keep driving, or the two distances
-            const yb = y1 - 26;
+            const yb = Y(WIDGET_BOX[1] - 26);
             if (st.alarm) {
-                cv.text('KEEP DRIVING', (x0 + x1) / 2, yb + 22, 22, t.text, { font: 'bold', spacing: 1.5, align: 'center' });
+                cv.text('KEEP DRIVING', (x0 + x1) / 2, yb + F(22), F(22), t.text, { font: 'bold', spacing: F(1.5), align: 'center' });
             } else {
-                const f = m.forecast();
-                cv.text('NEXT IN', x0, yb, 13, t.text, { font: 'bold', spacing: 1 });
-                cv.text(f ? (f.km > 0 ? f.km + ' km' : 'DUE') : '--', x0, yb + 24, 21, t.text, { font: 'bold' });
-                cv.text('SINCE LAST', x1, yb, 13, t.text, { font: 'bold', spacing: 1, align: 'right' });
-                cv.text(G.isNum(v.sinceKm) ? Math.round(v.sinceKm) + ' km' : '--', x1, yb + 24, 21, t.text, { font: 'bold', align: 'right' });
+                cv.text('NEXT IN', x0, yb, F(13), t.text, { font: 'bold', spacing: F(1) });
+                cv.text(f ? (f.km > 0 ? f.km + ' km' : 'DUE') : '--', x0, yb + F(24), F(21), t.text, { font: 'bold' });
+                cv.text('SINCE LAST', x1, yb, F(13), t.text, { font: 'bold', spacing: F(1), align: 'right' });
+                cv.text(since !== null ? Math.round(since) + ' km' : '--', x1, yb + F(24), F(21), t.text, { font: 'bold', align: 'right' });
             }
             return cv.canvas;
         }
