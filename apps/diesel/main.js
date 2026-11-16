@@ -14,6 +14,7 @@
  * regeneration, every 30 s otherwise (setting "Keep watching with the screen closed").
  * The values and what they mean are in dpf.js; `node test_dpf.js` tests that part without a car.
  */
+const fs = require('fs');
 const path = require('path');
 const mgu = require('./kit/mgu');
 const { ScaledCanvas, withAlpha } = require('./kit/canvas');
@@ -47,6 +48,24 @@ async function background(bg) {
     const demo = new Monitor({ regenTemp: 500 });
     const rec = new Recorder({ dir: path.join(bg.dataDir, 'drives'), log });
     settings.onChange(() => { real.regenTemp = settings.get('regenTemp'); });
+
+    // the last values read, kept across restarts: with the engine off nothing is read (so the car can sleep), and
+    // the screens and the widget show the last drive's values instead of nothing. Saved every few minutes while
+    // reading and when the engine goes off; written to a temporary file first so a power cut leaves the old one.
+    const LAST_FILE = path.join(bg.dataDir, 'last.json'), LAST_SAVE_MS = 5 * 60000;
+    let lastSaved = 0;
+    try {
+        const j = JSON.parse(fs.readFileSync(LAST_FILE, 'utf8'));
+        if (j && typeof j === 'object' && !Object.keys(real.last).length) real.last = j;
+    } catch (e) { /* first start, or unreadable: nothing to show until the engine runs */ }
+    function saveLast(now) {
+        if (!Object.keys(real.last).length) return;
+        try {
+            fs.writeFileSync(LAST_FILE + '.tmp', JSON.stringify(real.last));
+            fs.renameSync(LAST_FILE + '.tmp', LAST_FILE);
+            lastSaved = now;
+        } catch (e) { log.warn('last values: ' + ((e && e.message) || e)); }
+    }
 
     const core = {
         car, real, demo, rec,
@@ -95,6 +114,7 @@ async function background(bg) {
             const keys = full ? ALL : FAST, s = { t: Date.now() };
             for (const k of keys) s[k] = await reader.value(k, DIDS[k]);
             if (full) lastFull = Date.now();
+            if (Date.now() - lastSaved >= LAST_SAVE_MS) saveLast(Date.now());
             if (keys.some((k) => s[k] !== null)) {
                 core.error = '';
                 const event = happened(real.update(s));
@@ -119,7 +139,7 @@ async function background(bg) {
         const d = car.data(), on = G.isNum(d.rpm) && d.rpm > ENGINE_RPM;
         if (!on) {
             // nothing is read with the engine off, so the car can sleep
-            if (wasOn && !offSince) { offSince = now; rec.flush(now); }
+            if (wasOn && !offSince) { offSince = now; rec.flush(now); saveLast(now); }
             if (offSince && now - offSince > OFF_MS) {
                 const event = happened(real.engineOff(offSince));
                 if (event && settings.get('record')) rec.sample({ t: now, rpm: d.rpm, speed: d.speed, event: event + ' (engine off)' });
@@ -162,8 +182,11 @@ mgu.run({
                 return { text: off ? 'ENGINE OFF' : 'READING...', sub: off ? 'Read while the engine runs' : 'Asking the engine unit', color: t.dim };
             }
             const f = m.forecast();
+            if (engineOff()) return { text: 'FILTER OK', sub: 'Engine off' + (v.t ? ' - last read ' + when(v.t) : ''), color: GO };
             return { text: 'FILTER OK', sub: f ? (f.km > 0 ? 'Next regeneration in about ' + km(f.km) : 'Next regeneration is due') : 'No regeneration running', color: GO };
         }
+        // the engine off (live data, not the demo): the values shown are the last drive's
+        const engineOff = () => !useDemo() && !(car.data().rpm > ENGINE_RPM);
         const km = (x) => (G.isNum(x) ? Math.round(x).toLocaleString('en-US').replace(/,/g, ' ') + ' km' : '--');
         const num = (x, dec, unit) => (G.isNum(x) ? G.fmt(x, dec) + (unit ? ' ' + unit : '') : '--');
         const two = (n) => String(n).padStart(2, '0');
@@ -202,10 +225,11 @@ mgu.run({
             // exhaust
             const lim = m.regenTemp, hot = G.isNum(v.temp) && v.temp >= lim;
             G.panel(cv, t, 544, 140, 500, 372, 'Exhaust before the filter');
-            big(cv, t, 568, 286, v.temp, 0, '°C', hot ? t.warn : null);
+            const off = engineOff();
+            big(cv, t, 568, 286, v.temp, 0, '°C', off ? t.dim : hot ? t.warn : null);
             G.bar(cv, t, 568, 306, 452, 60, { head: false, value: v.temp, min: 0, max: 800, step: 200, ramp: 'hot' });
             row(cv, t, 568, 452, 432, 'REGENERATION ABOVE', lim + ' °C');
-            row(cv, t, 568, 452, 476, 'NOW', !G.isNum(v.temp) ? '--' : hot ? 'BURNING' : 'NORMAL', hot ? t.warn : null);
+            row(cv, t, 568, 452, 476, 'NOW', off ? 'ENGINE OFF' : !G.isNum(v.temp) ? '--' : hot ? 'BURNING' : 'NORMAL', off ? t.dim : hot ? t.warn : null);
 
             // regenerations
             const f = m.forecast();
