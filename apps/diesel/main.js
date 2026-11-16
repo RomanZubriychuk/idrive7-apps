@@ -197,7 +197,7 @@ mgu.run({
             big(cv, t, 48, 286, v.soot, 1, 'g', sootColor(t, v.soot));
             G.bar(cv, t, 48, 306, 452, 60, { head: false, value: v.soot, min: 0, max, step: max / 5, color: m.running ? 'warn' : !G.isNum(v.soot) ? null : v.soot >= max ? 'crit' : v.soot >= max * 0.8 ? 'warn' : 'accent2' });
             row(cv, t, 48, 452, 432, 'OIL ASH', num(v.ash, 1, 'g'));
-            row(cv, t, 48, 452, 476, 'PRESSURE ACROSS', num(v.dp, 0, 'hPa'));
+            row(cv, t, 48, 452, 476, 'PRESSURE ACROSS', num(v.dp, 1, 'hPa'));
 
             // exhaust
             const lim = m.regenTemp, hot = G.isNum(v.temp) && v.temp >= lim;
