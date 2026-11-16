@@ -272,9 +272,10 @@ mgu.run({
                 : f ? (f.km > 0 ? 'Next regen in ~' + f.km + ' km' : 'Regeneration due')
                 : since !== null ? 'Last regen ' + since + ' km ago' : 'Waiting for engine data';
             const way = m.running ? 1 : f && since !== null && since + f.km > 0 ? since / (since + f.km) : 0;
-            // the layout's own progress bar is short and fixed: a scale in text as well, ten squares and the share
-            const n = Math.round(G.clamp(way, 0, 1) * 10);
-            const scale = '\u25A0'.repeat(n) + '\u25A1'.repeat(10 - n) + '  ' + Math.round(G.clamp(way, 0, 1) * 100) + ' %';
+            // the layout's own progress bar is short and fixed: a scale in text as well. Plain ASCII: the HMI's
+            // font has no geometric shapes (U+25A0 / U+25A1 came out as nothing on the car); a cell shows ~20 characters
+            const n = Math.round(G.clamp(way, 0, 1) * 12);
+            const scale = '|'.repeat(n) + '.'.repeat(12 - n) + '  ' + Math.round(G.clamp(way, 0, 1) * 100) + ' %';
             const line2 = m.running ? 'Keep driving, don\'t switch off'
                 : m.interrupted ? 'Last one was cut short'
                 : f && since !== null ? scale : '';
