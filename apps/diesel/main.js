@@ -272,13 +272,9 @@ mgu.run({
                 : f ? (f.km > 0 ? 'Next regen in ~' + f.km + ' km' : 'Regeneration due')
                 : since !== null ? 'Last regen ' + since + ' km ago' : 'Waiting for engine data';
             const way = m.running ? 1 : f && since !== null && since + f.km > 0 ? since / (since + f.km) : 0;
-            // the layout's own progress bar is short and fixed: a scale in text as well. Plain ASCII: the HMI's
-            // font has no geometric shapes (U+25A0 / U+25A1 came out as nothing on the car); a cell shows ~20 characters
-            const n = Math.round(G.clamp(way, 0, 1) * 12);
-            const scale = '|'.repeat(n) + '.'.repeat(12 - n) + '  ' + Math.round(G.clamp(way, 0, 1) * 100) + ' %';
             const line2 = m.running ? 'Keep driving, don\'t switch off'
                 : m.interrupted ? 'Last one was cut short'
-                : f && since !== null ? scale : '';
+                : f && since !== null ? 'Last one ' + since + ' km ago' : '';
             const cells = {
                 // both sizes: the layout's own title, drawn by the HMI like BMW's widgets' (the dimmed top of the
                 // picture is meant for it), so the picture needn't carry one
