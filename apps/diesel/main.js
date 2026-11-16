@@ -286,7 +286,9 @@ mgu.run({
                 TextRecordings: [on ? line1 : '', 'Text'],
                 TextCam: [on ? line2 : '', 'Text'],
                 ProgressbarVisible: [on, 'Bool'],
-                Progress: [on ? Math.round(G.clamp(way, 0, 1) * 100) : 0, 'Float'],
+                // a share 0..1: sent as a percentage (as Live Data and eDrive do) the bar showed full at any value
+                // on the car (Live Data at 1.1 l/h and DPF at 39 % alike), so the layout takes a fraction
+                Progress: [on ? Math.round(G.clamp(way, 0, 1) * 100) / 100 : 0, 'Float'],
                 TimeElapsed: [on ? 'Next ' + (f ? f.km + ' km' : '--') : '', 'Text'],
                 TimeRemaining: [on ? 'Last ' + (since !== null ? since + ' km' : '--') : '', 'Text'],
             };
