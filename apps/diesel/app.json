@@ -2,7 +2,7 @@
   "id": "diesel",
   "title": "Diesel",
   "description": "For B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Starts with the car and records every drive for calibration. Read-only",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "OAD1",
   "iconGlyph": "DPF",
