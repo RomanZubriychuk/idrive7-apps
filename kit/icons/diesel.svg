@@ -1,0 +1,30 @@
+<!-- accent: #ff7a1a -->
+<defs>
+  <linearGradient id="d-can" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2f5f8"/><stop offset="0.18" stop-color="#ffffff"/><stop offset="0.55" stop-color="#9aa3ae"/><stop offset="1" stop-color="#5c6470"/></linearGradient>
+  <linearGradient id="d-pipe" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6eaee"/><stop offset="0.4" stop-color="#ffffff"/><stop offset="1" stop-color="#6c7480"/></linearGradient>
+  <linearGradient id="d-core" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a2d33"/><stop offset="0.45" stop-color="#4a3a30"/><stop offset="1" stop-color="#ff7a1a"/></linearGradient>
+  <linearGradient id="d-out" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+  <filter id="d-blur" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/></filter>
+</defs>
+<!-- soot going in -->
+<circle cx="10" cy="60" r="4.2" fill="#3a3f47" stroke="#c9d0d8" stroke-width="1.2"/>
+<circle cx="17" cy="78" r="3.4" fill="#3a3f47" stroke="#c9d0d8" stroke-width="1.2"/>
+<circle cx="6" cy="72" r="2.6" fill="#3a3f47" stroke="#c9d0d8" stroke-width="1.1"/>
+<!-- pipes -->
+<rect x="18" y="62" width="20" height="16" rx="3" fill="url(#d-pipe)"/>
+<rect x="102" y="62" width="20" height="16" rx="3" fill="url(#d-pipe)"/>
+<!-- the can -->
+<rect x="32" y="34" width="76" height="72" rx="16" fill="url(#d-can)" stroke="#ffffff" stroke-opacity="0.8" stroke-width="1.5"/>
+<!-- the cut-away core: channels, sooty at the inlet, glowing at the outlet -->
+<rect x="44" y="46" width="52" height="48" rx="6" fill="url(#d-core)"/>
+<rect x="66" y="50" width="30" height="40" rx="6" fill="#ff7a1a" filter="url(#d-blur)" opacity="0.55"/>
+<g stroke="#0c0f13" stroke-width="2.2" opacity="0.85">
+  <path d="M44 58 H96"/><path d="M44 70 H96"/><path d="M44 82 H96"/>
+  <path d="M57 46 V94"/><path d="M70 46 V94"/><path d="M83 46 V94"/>
+</g>
+<rect x="44" y="46" width="52" height="48" rx="6" fill="none" stroke="#0c0f13" stroke-width="2.4"/>
+<!-- clean air out -->
+<path d="M124 64 C128 62 132 66 136 64" fill="none" stroke="url(#d-out)" stroke-width="2.6" stroke-linecap="round"/>
+<path d="M124 76 C128 74 132 78 136 76" fill="none" stroke="url(#d-out)" stroke-width="2.6" stroke-linecap="round"/>
+<!-- gloss -->
+<rect x="38" y="37" width="64" height="5" rx="2.5" fill="#ffffff" opacity="0.7"/>

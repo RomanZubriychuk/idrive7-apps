@@ -1,8 +1,8 @@
 {
   "id": "diesel",
-  "title": "Diesel",
-  "description": "For B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Starts with the car and records every drive for calibration. Read-only",
-  "version": "0.2.1",
+  "title": "DPF",
+  "description": "DPF monitor for B47 / B57 diesels: the particulate filter's soot and ash, a clear warning while a regeneration runs (don't switch off), a log of regenerations, about how far the next one is, and a home-screen widget. Starts with the car and records every drive for calibration. Read-only",
+  "version": "0.3.0",
   "vendor": "custom",
   "loggingId": "OAD1",
   "iconGlyph": "DPF",
@@ -24,12 +24,12 @@
   },
   "startWidget": {
     "comment": "Home-screen widget, as eDrive's and Live Data's: the layout and cell names of BMW's Drive Recorder widget; the drawn picture goes into BackgroundImage1. If it sits wrong on the G30, adjust 'size' and 'safe' (the share of each edge the HMI crops).",
-    "name": "Diesel",
+    "name": "DPF",
     "layout": "LT_Table_OnlineApps_DriveRecorderWidget",
     "image": "BackgroundImage1",
     "scale": 2,
     "size": [384, 256],
-    "safe": [0.09, 0.17],
+    "safe": [0.09, 0.22],
     "cells": {
       "ErrorInfo": [false, "Bool"],
       "background": [true, "Bool"],
@@ -41,7 +41,7 @@
     {
       "name": "MAIN",
       "kind": "canvas",
-      "title": "Diesel",
+      "title": "DPF",
       "buttons": [
         ["BTN_PAGE", "Next page"],
         ["BTN_SETTINGS", "Settings"]

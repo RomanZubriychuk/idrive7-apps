@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Diesel - the particulate filter of a B47 / B57 diesel, with what the Service app's Engine page doesn't have:
+ * DPF (app id diesel) - the particulate filter of a B47 / B57 diesel, with what the Service app's Engine page doesn't have:
  *
  *   - a warning across the screen while a regeneration runs ("keep driving"), and one after a regeneration that
  *     was cut short
@@ -264,15 +264,25 @@ mgu.run({
         const wcan = {}, wtext = {};
         /* The small widget shows no picture, only the layout's own text lines and progress bar. */
         function widgetCells(inst, m) {
-            const v = m.last, f = m.forecast(), on = !inst.big, max = settings.get('sootMax');
+            const v = m.last, f = m.forecast(), on = !inst.big;
+            // grams say little at a glance: the small card says how far the next regeneration is, and its bar is
+            // the way there by the engine unit's own average (distance since the last against since + to go)
+            const since = G.isNum(v.sinceKm) ? Math.round(v.sinceKm) : null;
+            const line1 = m.running ? 'Regeneration running'
+                : f ? (f.km > 0 ? 'Next regen in ~' + f.km + ' km' : 'Regeneration due')
+                : since !== null ? 'Last regen ' + since + ' km ago' : 'Waiting for engine data';
+            const line2 = m.running ? 'Keep driving, don\'t switch off'
+                : m.interrupted ? 'Last one was cut short'
+                : f && since !== null ? 'Last one ' + since + ' km ago' : '';
+            const way = m.running ? 1 : f && since !== null && since + f.km > 0 ? since / (since + f.km) : 0;
             const cells = {
-                Title: [on ? 'Diesel' : '', 'Text'],
-                TextRecordings: [on ? (m.running ? 'REGENERATION' : 'Soot ' + G.fmt(v.soot, 1) + ' g') : '', 'Text'],
-                TextCam: [on ? (m.running ? 'Keep driving' : m.interrupted ? 'Last one cut short' : '') : '', 'Text'],
+                Title: [on ? 'DPF' : '', 'Text'],
+                TextRecordings: [on ? line1 : '', 'Text'],
+                TextCam: [on ? line2 : '', 'Text'],
                 ProgressbarVisible: [on, 'Bool'],
-                Progress: [on && G.isNum(v.soot) ? Math.round(G.clamp(v.soot / max, 0, 1) * 100) : 0, 'Float'],
+                Progress: [on ? Math.round(G.clamp(way, 0, 1) * 100) : 0, 'Float'],
                 TimeElapsed: [on ? 'Next ' + (f ? f.km + ' km' : '--') : '', 'Text'],
-                TimeRemaining: [on ? 'Last ' + (G.isNum(v.sinceKm) ? Math.round(v.sinceKm) + ' km' : '--') : '', 'Text'],
+                TimeRemaining: [on ? 'Last ' + (since !== null ? since + ' km' : '--') : '', 'Text'],
             };
             const prev = wtext[inst.spawnId] || (wtext[inst.spawnId] = {});
             Object.keys(cells).forEach((k) => {
@@ -293,10 +303,11 @@ mgu.run({
             if (st.alarm) cv.roundRect(x0 - 8, y0 - 4, iw + 16, y1 - y0 + 8, 10, withAlpha(st.color, 0.28));
             // top: what is going on
             const head = st.alarm ? 'REGENERATION' : m.interrupted ? 'CUT SHORT' : 'DPF';
-            cv.text(head, x0, y0 + 18, 18, st.alarm || m.interrupted ? t.warn : t.dim, { font: 'bold', spacing: 1.5 });
+            // over the home screen's lighter background the theme's dim grey is hard to read: the full text colour
+            cv.text(head, x0, y0 + 18, 18, st.alarm || m.interrupted ? t.warn : t.text, { font: 'bold', spacing: 1.5 });
             if (useDemo()) cv.text('DEMO', x1, y0 + 18, 13, t.warn, { font: 'bold', spacing: 1, align: 'right' });
             // soot, big
-            const ky = y0 + 88;
+            const ky = y0 + 76;
             const vw = cv.text(G.fmt(v.soot, 1), x0, ky, 64, G.isNum(v.soot) ? sootColor(t, v.soot) : t.dim, { font: 'num' });
             cv.text('g', x0 + vw + 6, ky, 22, t.dim, { font: 'bold' });
             if (st.alarm) cv.text(G.fmt(v.temp, 0) + ' °C', x1, ky, 26, t.warn, { font: 'bold', align: 'right' });
@@ -310,9 +321,9 @@ mgu.run({
                 cv.text('KEEP DRIVING', (x0 + x1) / 2, yb + 22, 22, t.text, { font: 'bold', spacing: 1.5, align: 'center' });
             } else {
                 const f = m.forecast();
-                cv.text('NEXT IN', x0, yb, 13, t.dim, { font: 'bold', spacing: 1 });
+                cv.text('NEXT IN', x0, yb, 13, t.text, { font: 'bold', spacing: 1 });
                 cv.text(f ? (f.km > 0 ? f.km + ' km' : 'DUE') : '--', x0, yb + 24, 21, t.text, { font: 'bold' });
-                cv.text('SINCE LAST', x1, yb, 13, t.dim, { font: 'bold', spacing: 1, align: 'right' });
+                cv.text('SINCE LAST', x1, yb, 13, t.text, { font: 'bold', spacing: 1, align: 'right' });
                 cv.text(G.isNum(v.sinceKm) ? Math.round(v.sinceKm) + ' km' : '--', x1, yb + 24, 21, t.text, { font: 'bold', align: 'right' });
             }
             return cv.canvas;
